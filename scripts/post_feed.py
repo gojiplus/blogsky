@@ -2,6 +2,7 @@
 import os
 import argparse
 import sys
+import re
 import feedparser
 import grapheme
 from atproto import Client
@@ -28,36 +29,41 @@ def load_feed(url):
 
 
 def make_post(entry):
-    """Build post text + facets for a feed entry, truncated to 300 graphemes."""
-    title = entry.title.strip()
+    """Build post text + facets for a feed entry, truncated to 300 graphemes, with cleaned HTML and 'link' facet."""
+    title = re.sub(r'<[^>]+>', '', entry.title).strip()
     link = entry.link.strip()
-    summary = entry.get("summary", entry.get("description", "")).strip()
-    snippet = summary[:200].rsplit(" ", 1)[0] + "…"
 
-    # Prepare separator and link grapheme counts
+    # Clean HTML from summary/description
+    summary_html = entry.get("summary", entry.get("description", ""))
+    summary_text = re.sub(r'<[^>]+>', '', summary_html).strip()
+    snippet = summary_text[:200].rsplit(" ", 1)[0] + "…"
+
+    # Prepare separator and link text
     sep = "\n\n"
-    link_gr = grapheme.length(link)
+    link_text = "link"
+
+    # Grapheme counts
+    link_gr = grapheme.length(link_text)
     sep_gr = grapheme.length(sep)
     max_total = 300
-    # Compute max for body to ensure full <=300
     max_body = max_total - link_gr - sep_gr
 
     # Initial body
     body = f"📝 {title}\n\n{snippet}"
-    # Truncate body to its allowed grapheme length
+    # Truncate body safely
     if grapheme.length(body) > max_body:
         body = grapheme.slice(body, 0, max_body)
         if " " in body:
             body = body.rsplit(" ", 1)[0]
         body += "…"
 
-    # Combine full post
-    full_body = f"{body}{sep}{link}"
+    # Combine post
+    full_body = f"{body}{sep}{link_text}"
 
     # Byte indices for facet
     b = full_body.encode('utf-8')
     link_start = len(body.encode('utf-8')) + len(sep.encode('utf-8'))
-    link_end = link_start + len(link.encode('utf-8'))
+    link_end = link_start + len(link_text.encode('utf-8'))
 
     facets = [
         {
