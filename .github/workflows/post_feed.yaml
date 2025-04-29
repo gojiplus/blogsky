@@ -1,0 +1,35 @@
+name: Post RSS feed → Bluesky
+
+on:
+  # Manual trigger with a custom feed-url
+  workflow_dispatch:
+    inputs:
+      feed_url:
+        description: 'RSS/Atom feed URL to post'
+        required: true
+        default: 'https://marketdesigner.blogspot.com/feeds/posts/default'
+  schedule:
+    - cron: '0 14 * * *'
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install feedparser atproto-client
+
+      - name: Publish feed items to Bluesky
+        env:
+          # pass the feed URL from either schedule or manual dispatch
+          FEED_URL: ${{ github.event.inputs.feed_url }}
+          BSKY_HANDLE: ${{ secrets.BSKY_HANDLE }}
+          BSKY_PASSWORD: ${{ secrets.BSKY_PASSWORD }}
+        run: python scripts/post_feed.py --feed-url "${{ env.FEED_URL }}"
