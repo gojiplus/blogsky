@@ -24,11 +24,12 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install feedparser atproto-client
+        run: |
+          python -m pip install --upgrade pip
+          pip install feedparser atproto
 
       - name: Publish feed items to Bluesky
         env:
-          # pass the feed URL from either schedule or manual dispatch
           FEED_URL: ${{ github.event.inputs.feed_url }}
           BSKY_HANDLE: ${{ secrets.BSKY_HANDLE }}
           BSKY_PASSWORD: ${{ secrets.BSKY_PASSWORD }}
