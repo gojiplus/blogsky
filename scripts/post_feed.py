@@ -3,6 +3,7 @@ import os
 import argparse
 import sys
 import re
+import html
 import feedparser
 import grapheme
 from atproto import Client
@@ -29,40 +30,44 @@ def load_feed(url):
 
 
 def make_post(entry):
-    """Build post text + facets for a feed entry, truncated to 300 graphemes, with cleaned HTML and 'link' facet."""
-    title = re.sub(r'<[^>]+>', '', entry.title).strip()
+    """Build post text + facets, truncate to 300 graphemes, strip HTML/entities and use 'link' facet."""
+    # Clean HTML and entities from title
+    raw_title = html.unescape(re.sub(r'<[^>]+>', '', entry.title))
+    title = raw_title.replace('\u00a0', ' ').strip()
     link = entry.link.strip()
 
-    # Clean HTML from summary/description
-    summary_html = entry.get("summary", entry.get("description", ""))
-    summary_text = re.sub(r'<[^>]+>', '', summary_html).strip()
-    snippet = summary_text[:200].rsplit(" ", 1)[0] + "…"
+    # Clean HTML and entities from summary/description
+    raw_summary = entry.get("summary", entry.get("description", ""))
+    summary_text = html.unescape(re.sub(r'<[^>]+>', '', raw_summary))
+    summary = summary_text.replace('\u00a0', ' ').strip()
+    snippet = summary[:200].rsplit(" ", 1)[0] + "…"
 
-    # Prepare separator and link text
+    # Prepare separators
     sep = "\n\n"
     link_text = "link"
 
-    # Grapheme counts
+    # Compute grapheme length allowances
     link_gr = grapheme.length(link_text)
     sep_gr = grapheme.length(sep)
     max_total = 300
     max_body = max_total - link_gr - sep_gr
 
-    # Initial body
-    body = f"📝 {title}\n\n{snippet}"
-    # Truncate body safely
+    # Build body and truncate safely
+    body = f"📝 {title}{sep}{snippet}"
     if grapheme.length(body) > max_body:
         body = grapheme.slice(body, 0, max_body)
+        # back off to last word boundary
         if " " in body:
             body = body.rsplit(" ", 1)[0]
         body += "…"
 
-    # Combine post
+    # Full post
     full_body = f"{body}{sep}{link_text}"
 
     # Byte indices for facet
     b = full_body.encode('utf-8')
-    link_start = len(body.encode('utf-8')) + len(sep.encode('utf-8'))
+    body_bytes = body.encode('utf-8') + sep.encode('utf-8')
+    link_start = len(body_bytes)
     link_end = link_start + len(link_text.encode('utf-8'))
 
     facets = [
@@ -107,3 +112,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
