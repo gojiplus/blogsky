@@ -32,34 +32,37 @@ def make_post(entry):
     summary = entry.get("summary", entry.get("description", "")).strip()
     snippet = summary[:200].rsplit(" ", 1)[0] + "…"
 
-    # Compose full text including link at end
-    body = f"📝 {title}\n\n{snippet}\n\n{link}"
-    # Truncate to 300 graphemes at word boundary
+    # Build body text (title + snippet) and always append link afterwards
+    body_text = f"📝 {title}\n\n{snippet}"
+    # Truncate body_text to leave room for link addition
     max_len = 300
-    if grapheme.length(body) > max_len:
-        truncated = grapheme.slice(body, 0, max_len)
-        # ensure not to cut in middle of word
+    if grapheme.length(body_text) > max_len:
+        truncated = grapheme.slice(body_text, 0, max_len)
         if " " in truncated:
             truncated = truncated.rsplit(" ", 1)[0]
-        body = truncated + "…"
+        body_text = truncated + "…"
 
-    # Compute byte positions for link facet
-    byte_text = body.encode('utf-8')
-    link_bytes = link.encode('utf-8')
-    start = byte_text.find(link_bytes)
-    end = start + len(link_bytes)
+    link_text = link
+    # Combine full post
+    full_body = f"{body_text}\n\n{link_text}"
+
+    # Compute byte positions for link facet at end
+    prefix_bytes = full_body.encode('utf-8')
+    # start index is where link_text begins
+    link_start = len(body_text.encode('utf-8')) + len("\n\n".encode('utf-8'))
+    link_end = link_start + len(link_text.encode('utf-8'))
 
     facets = [
         {
-            "index": {"byteStart": start, "byteEnd": end},
+            "index": {"byteStart": link_start, "byteEnd": link_end},
             "features": [{
                 "$type": "app.bsky.richtext.facet#link",
-                "uri": link
+                "uri": link_text
             }]
         }
     ]
 
-    return body, facets
+    return full_body, facets
 
 
 def main():
