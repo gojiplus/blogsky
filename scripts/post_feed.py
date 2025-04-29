@@ -1,39 +1,68 @@
-import grapheme
+#!/usr/bin/env python3
+import os
+import argparse
+import feedparser
+import sys
+from atproto import Client, client_utils
 
-def create_post(self, title: str, link: str, abstract: str, authors: str):
-    """Create and send a post to Bluesky with correct grapheme handling (full text + link constraint)."""
-    prefix = "📄 "
+def parse_args():
+    p = argparse.ArgumentParser(description="Post latest entry from an RSS/Atom feed to Bluesky")
+    p.add_argument(
+        "--feed-url", required=True,
+        help="RSS/Atom feed URL (e.g. Blogspot Atom feed)"
+    )
+    return p.parse_args()
 
-    base_text = f"{prefix}{title} ({authors})"
-    
-    if abstract:
-        base_text += f" {abstract}"
 
-    # Link will be attached separately but link **text** counts toward limit
-    # because TextBuilder appends the link inside the post.
+def load_feed(url):
+    """Fetch and return feed entries."""
+    parsed = feedparser.parse(url)
+    if parsed.bozo:
+        print(f"Error parsing feed: {parsed.bozo_exception}", file=sys.stderr)
+        return []
+    return parsed.entries
 
-    # So we need to simulate final post content now
-    link_text = f"\n\n{link}"
-    total_post = base_text + link_text
 
-    # Now trim post to <= 300 graphemes
-    if grapheme.length(total_post) > 300:
-        # We need to trim the base_text so that base_text + link fits
-        allowed_base_length = 300 - grapheme.length(link_text)
+def make_post(entry):
+    """Build a Bluesky post for a feed entry."""
+    title = entry.title.strip()
+    link = entry.link.strip()
+    summary = entry.get("summary", entry.get("description", "")).strip()
+    # trim summary to ~200 chars at word boundary
+    snippet = summary[:200].rsplit(" ", 1)[0] + "…"
+    text = f"📝 {title}\n\n{snippet}"
+    return client_utils.TextBuilder()\
+        .text(text)\
+        .text("\n\n")\
+        .link(link, link)
 
-        base_text = grapheme.slice(base_text, 0, allowed_base_length)
 
-        # Rebuild
-        total_post = base_text + link_text
+def main():
+    args = parse_args()
+    handle = os.getenv("BSKY_HANDLE")
+    pwd = os.getenv("BSKY_PASSWORD")
+    if not handle or not pwd:
+        print("ERROR: BSKY_HANDLE and BSKY_PASSWORD must be set", file=sys.stderr)
+        sys.exit(1)
 
-    # Final Safety check
-    assert grapheme.length(total_post) <= 300, f"Still too long: {grapheme.length(total_post)} graphemes!"
+    client = Client()
+    session = client.login(handle, pwd)
+    print(f"Logged in as: {getattr(session, 'handle', handle)}", file=sys.stderr)
 
-    # Build the post
-    post_builder = client_utils.TextBuilder().text(base_text).text("\n\n").link(link, link)
+    entries = load_feed(args.feed_url)
+    if not entries:
+        print("No entries found in feed.", file=sys.stderr)
+        return
 
+    # Post only the newest item
+    entry = entries[0]
+    print(f"Posting: {entry.title} -> {entry.link}", file=sys.stderr)
+    post = make_post(entry)
     try:
-        self.client.send_post(post_builder)
-        print(f"✅ Posted to Bluesky: {title}")
+        resp = client.send_post(post)
+        print(f"Posted successfully. Response: {resp}", file=sys.stderr)
     except Exception as e:
-        print(f"❌ Failed to post '{title}': {e}")
+        print(f"Failed to post: {e}", file=sys.stderr)
+
+if __name__ == "__main__":
+    main()
