@@ -34,7 +34,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install feedparser atproto
+          pip install feedparser atproto grapheme
 
       - name: Post latest blogspot entry to Bluesky
         uses: ./github/actions/post-blogspot-to-bsky
