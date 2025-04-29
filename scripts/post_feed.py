@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 import os
 import argparse
-import feedparser
 import sys
+import feedparser
 import grapheme
 from atproto import Client
 
 
 def parse_args():
-    p = argparse.ArgumentParser(description="Post latest entry from an RSS/Atom feed to Bluesky with link facets")
+    p = argparse.ArgumentParser(
+        description="Post latest entry from an RSS/Atom feed to Bluesky with link facets"
+    )
     p.add_argument(
         "--feed-url", required=True,
         help="RSS/Atom feed URL (e.g. Blogspot Atom feed)"
@@ -32,32 +34,37 @@ def make_post(entry):
     summary = entry.get("summary", entry.get("description", "")).strip()
     snippet = summary[:200].rsplit(" ", 1)[0] + "…"
 
-    # Build body text (title + snippet) and always append link afterwards
-    body_text = f"📝 {title}\n\n{snippet}"
-    # Truncate body_text to leave room for link addition
-    max_len = 300
-    if grapheme.length(body_text) > max_len:
-        truncated = grapheme.slice(body_text, 0, max_len)
-        if " " in truncated:
-            truncated = truncated.rsplit(" ", 1)[0]
-        body_text = truncated + "…"
+    # Prepare separator and link grapheme counts
+    sep = "\n\n"
+    link_gr = grapheme.length(link)
+    sep_gr = grapheme.length(sep)
+    max_total = 300
+    # Compute max for body to ensure full <=300
+    max_body = max_total - link_gr - sep_gr
 
-    link_text = link
+    # Initial body
+    body = f"📝 {title}\n\n{snippet}"
+    # Truncate body to its allowed grapheme length
+    if grapheme.length(body) > max_body:
+        body = grapheme.slice(body, 0, max_body)
+        if " " in body:
+            body = body.rsplit(" ", 1)[0]
+        body += "…"
+
     # Combine full post
-    full_body = f"{body_text}\n\n{link_text}"
+    full_body = f"{body}{sep}{link}"
 
-    # Compute byte positions for link facet at end
-    prefix_bytes = full_body.encode('utf-8')
-    # start index is where link_text begins
-    link_start = len(body_text.encode('utf-8')) + len("\n\n".encode('utf-8'))
-    link_end = link_start + len(link_text.encode('utf-8'))
+    # Byte indices for facet
+    b = full_body.encode('utf-8')
+    link_start = len(body.encode('utf-8')) + len(sep.encode('utf-8'))
+    link_end = link_start + len(link.encode('utf-8'))
 
     facets = [
         {
             "index": {"byteStart": link_start, "byteEnd": link_end},
             "features": [{
                 "$type": "app.bsky.richtext.facet#link",
-                "uri": link_text
+                "uri": link
             }]
         }
     ]
